@@ -1,3 +1,8 @@
+pub mod parser;
+
+pub fn to_html() {
+}
+
 #[cfg(test)]
 mod tests {
     #[test]
