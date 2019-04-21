@@ -1,18 +1,8 @@
 use crate::parser::Kind::{IsHeading, IsParagraph, EOF};
-use crate::parser::Tag::Paragraph;
+use crate::tree::Element;
+use crate::tree::Tag::*;
+use crate::tree::Tag;
 
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct Element {
-    tag: Tag,
-    content: String,
-    children: Vec<Element>,
-}
-
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub enum Tag {
-    Paragraph,
-    Heading(usize),
-}
 
 #[derive(Debug, Eq, PartialEq)]
 pub enum Kind {
@@ -25,11 +15,23 @@ impl Kind {
     fn next(input: &str) -> Kind {
         if let Some(next) = input.chars().nth(0) {
             match next {
-                '=' if input.chars().peekable().any(|c| c == '=' || c == ' ') => IsHeading,
+                '=' if Kind::is_heading(input) => IsHeading,
                 _ => IsParagraph,
             }
         } else {
             return EOF;
+        }
+    }
+
+    fn is_heading(input: &str) -> bool {
+        if let Some(next) = input.chars().next() {
+            match next {
+                '=' => Kind::is_heading(&input[1..input.len()]),
+                ' ' => true,
+                _ => false,
+            }
+        } else {
+            false
         }
     }
 }
@@ -345,8 +347,8 @@ where
 
 #[cfg(test)]
 mod tests {
-    use crate::parser::Tag::Heading;
     use crate::parser::*;
+    use crate::tree::*;
 
     #[test]
     fn parse_literal() {
@@ -495,6 +497,18 @@ this is a story that must be told
             },
         ];
         assert_eq!(parse(input), expected);
+    }
+
+    #[test]
+    fn false_heading() {
+        assert_eq!(
+            parse("=Not a heading"),
+            vec![Element {
+                tag: Paragraph,
+                content: "=Not a heading".to_owned(),
+                children: vec![],
+            }]
+        );
     }
 }
 
