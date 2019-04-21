@@ -1,7 +1,6 @@
+#![feature(bind_by_move_pattern_guards)] 
 pub mod parser;
 
-pub fn to_html() {
-}
 
 #[cfg(test)]
 mod tests {

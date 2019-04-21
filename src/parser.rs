@@ -1,3 +1,6 @@
+use crate::parser::Kind::{IsHeading, IsParagraph, EOF};
+use crate::parser::Tag::Paragraph;
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Element {
     tag: Tag,
@@ -11,6 +14,51 @@ pub enum Tag {
     Heading(usize),
 }
 
+#[derive(Debug, Eq, PartialEq)]
+pub enum Kind {
+    IsParagraph,
+    IsHeading,
+    EOF,
+}
+
+impl Kind {
+    fn next(input: &str) -> Kind {
+        if let Some(next) = input.chars().nth(0) {
+            match next {
+                '=' if input.chars().peekable().any(|c| c == '=' || c == ' ') => IsHeading,
+                _ => IsParagraph,
+            }
+        } else {
+            return EOF;
+        }
+    }
+}
+
+pub fn parse(input: &str) -> Vec<Element> {
+    let mut output = vec![];
+    let mut kind = Kind::next(input);
+    let mut next_input = input;
+
+    while kind != EOF {
+        match kind {
+            IsHeading => {
+                let next = head().parse(next_input).expect("parse error");
+                output.push(next.1);
+                next_input = next.0;
+                kind = Kind::next(next_input);
+            }
+            IsParagraph => {
+                let next = paragraph_element().parse(next_input).expect("parse error");
+                output.push(next.1);
+                next_input = next.0;
+                kind = Kind::next(next_input);
+            }
+            EOF => break,
+        }
+    }
+
+    output
+}
 
 type ParseResult<'a, Output> = Result<(&'a str, Output), &'a str>;
 
@@ -211,6 +259,10 @@ fn whitespace_char<'a>() -> impl Parser<'a, char> {
     pred(any_char, |c| c.is_whitespace())
 }
 
+fn not_whitespace_char<'a>() -> impl Parser<'a, char> {
+    pred(any_char, |c| !c.is_whitespace())
+}
+
 fn whitespace_wrap<'a, P, A>(parser: P) -> impl Parser<'a, A>
 where
     P: Parser<'a, A>,
@@ -237,7 +289,7 @@ fn quoted_string<'a>() -> impl Parser<'a, String> {
     .map(|chars| chars.into_iter().collect())
 }
 
-fn heading_level<'a>() -> impl Parser<'a, Tag> {
+fn heading_start<'a>() -> impl Parser<'a, Tag> {
     left(
         one_or_more(any_char.pred(|c| *c == '=')).map(|head| Tag::Heading(head.len())),
         one_or_more(whitespace_char()),
@@ -248,13 +300,14 @@ fn new_line<'a>() -> impl Parser<'a, ()> {
     either(match_literal("\n"), match_literal("\r\n"))
 }
 
+// TODO: factorize this to fn element(Kind) -> impl Parser<Element>
 fn head<'a>() -> impl Parser<'a, Element> {
     left(
         pair(
-            heading_level(),
+            heading_start(),
             zero_or_more(any_char.pred(|c| *c != '\n')).map(|chars| chars.into_iter().collect()),
         ),
-        new_line(),
+        zero_or_more(new_line()),
     )
     .map(|(tag, content)| Element {
         tag,
@@ -263,14 +316,21 @@ fn head<'a>() -> impl Parser<'a, Element> {
     })
 }
 
+fn paragraph<'a>() -> impl Parser<'a, String> {
+    pair(
+        not_whitespace_char(),
+        zero_or_more(any_char.pred(|c| *c != '\n')).map(|chars| chars.into_iter().collect()),
+    )
+    .map(|(left, right): (char, String)| format!("{}{}", left, right))
+}
 
-// fn single_element<'a>() -> impl Parser<'a, Element> {
-//     left(element_start(), match_literal("/>")).map(|(name, attributes)| Element {
-//         name,
-//         attributes,
-//         children: vec![],
-//     })
-// }
+fn paragraph_element<'a>() -> impl Parser<'a, Element> {
+    left(paragraph(), zero_or_more(new_line())).map(|content| Element {
+        tag: Paragraph,
+        content,
+        children: vec![],
+    })
+}
 
 fn either<'a, P1, P2, A>(parser1: P1, parser2: P2) -> impl Parser<'a, A>
 where
@@ -310,16 +370,62 @@ mod tests {
             Ok(("Je suis le ténébreux, le voeuf, l'inconsolé", ()))
         );
     }
+    #[test]
+    fn parse_not_whitespace() {
+        assert_eq!(
+            not_whitespace_char().parse("Je suis le ténébreux, le voeuf, l'inconsolé"),
+            Ok(("e suis le ténébreux, le voeuf, l'inconsolé", 'J'))
+        );
+    }
 
     #[test]
-    fn parse_heading_level() {
+    fn parse_heading_start() {
         assert_eq!(
-            heading_level().parse("=== The return of the king"),
+            heading_start().parse("=== The return of the king"),
             Ok(("The return of the king", Heading(3)))
         );
         assert_eq!(
-            heading_level().parse("= The fellowship of the ring"),
+            heading_start().parse("= The fellowship of the ring"),
             Ok(("The fellowship of the ring", Heading(1)))
+        );
+    }
+
+    #[test]
+    fn parse_paragraph_content() {
+        assert_eq!(
+            paragraph().parse("Hello Dolly\nJolene Jolen Jolene"),
+            Ok(("\nJolene Jolen Jolene", "Hello Dolly".to_owned()))
+        );
+
+        assert_eq!(
+            paragraph().parse("Hello Mike"),
+            Ok(("", "Hello Mike".to_owned()))
+        );
+    }
+
+    #[test]
+    fn parse_paragraph() {
+        assert_eq!(
+            paragraph_element().parse("Hello Dolly\nJolene Jolen Jolene"),
+            Ok((
+                "Jolene Jolen Jolene",
+                Element {
+                    tag: Paragraph,
+                    content: "Hello Dolly".to_owned(),
+                    children: vec![],
+                }
+            ))
+        );
+        assert_eq!(
+            paragraph_element().parse("Hello Mike"),
+            Ok((
+                "",
+                Element {
+                    tag: Paragraph,
+                    content: "Hello Mike".to_owned(),
+                    children: vec![],
+                }
+            ))
         );
     }
 
@@ -347,6 +453,48 @@ mod tests {
                 }
             ))
         );
+    }
+
+    #[test]
+    fn eof() {
+        assert_eq!(Kind::next(""), EOF);
+    }
+
+    #[test]
+    fn single_element() {
+        let expected = vec![Element {
+            tag: Heading(2),
+            content: "The message".to_owned(),
+            children: vec![],
+        }];
+        assert_eq!(parse("== The message"), expected);
+    }
+
+    #[test]
+    fn paragraph_and_heading() {
+        let input = r#"= The message
+this is a story that must be told
+== Another title
+"#;
+
+        let expected = vec![
+            Element {
+                tag: Heading(1),
+                content: "The message".to_owned(),
+                children: vec![],
+            },
+            Element {
+                tag: Paragraph,
+                content: "this is a story that must be told".to_owned(),
+                children: vec![],
+            },
+            Element {
+                tag: Heading(2),
+                content: "Another title".to_owned(),
+                children: vec![],
+            },
+        ];
+        assert_eq!(parse(input), expected);
     }
 }
 
