@@ -1,5 +1,6 @@
-pub mod parser;
+mod parser;
 mod tree; 
+mod html;
 
 
 #[cfg(test)]
