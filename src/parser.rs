@@ -1,8 +1,9 @@
 use crate::parser::Kind::{IsHeading, IsParagraph, EOF};
 use crate::tree::Element;
-use crate::tree::Tag::*;
-use crate::tree::Tag;
 
+use crate::tree::Tag;
+use crate::tree::Tag::*;
+use crate::tree::Tree;
 
 #[derive(Debug, Eq, PartialEq)]
 pub enum Kind {
@@ -36,30 +37,39 @@ impl Kind {
     }
 }
 
-pub fn parse(input: &str) -> Vec<Element> {
-    let mut output = vec![];
+pub fn parse(input: &str) -> Tree {
+    parse_elements(input, 1).0
+}
+fn parse_elements(input: &str, depth: usize) -> (Tree, &str) {
+    let mut output = Tree::new();
     let mut kind = Kind::next(input);
+    let mut next;
     let mut next_input = input;
+    let mut next_depth = depth;
 
-    while kind != EOF {
+    while next_depth >= depth {
         match kind {
             IsHeading => {
-                let next = head().parse(next_input).expect("parse error");
-                output.push(next.1);
+                next = head().parse(next_input).unwrap();
+                next_depth = next.1.tag.get_depth();
                 next_input = next.0;
-                kind = Kind::next(next_input);
+
+                if next_depth > depth {
+                    let down_a_level = parse_elements(next.0, next_depth);
+                    next.1.push(down_a_level.0);
+                    next_input = down_a_level.1;
+                }
             }
             IsParagraph => {
-                let next = paragraph_element().parse(next_input).expect("parse error");
-                output.push(next.1);
+                next = paragraph_element().parse(next_input).unwrap();
                 next_input = next.0;
-                kind = Kind::next(next_input);
             }
             EOF => break,
         }
+        output.push(next.1);
+        kind = Kind::next(next_input);
     }
-
-    output
+    (output, next_input)
 }
 
 type ParseResult<'a, Output> = Result<(&'a str, Output), &'a str>;
@@ -464,11 +474,13 @@ mod tests {
 
     #[test]
     fn single_element() {
-        let expected = vec![Element {
-            tag: Heading(2),
-            content: "The message".to_owned(),
-            children: vec![],
-        }];
+        let expected = Tree {
+            0: vec![Element {
+                tag: Heading(2),
+                content: "The message".to_owned(),
+                children: vec![],
+            }],
+        };
         assert_eq!(parse("== The message"), expected);
     }
 
@@ -479,23 +491,25 @@ this is a story that must be told
 == Another title
 "#;
 
-        let expected = vec![
-            Element {
-                tag: Heading(1),
-                content: "The message".to_owned(),
-                children: vec![],
-            },
-            Element {
-                tag: Paragraph,
-                content: "this is a story that must be told".to_owned(),
-                children: vec![],
-            },
-            Element {
-                tag: Heading(2),
-                content: "Another title".to_owned(),
-                children: vec![],
-            },
-        ];
+        let expected = Tree {
+            0: vec![
+                Element {
+                    tag: Heading(1),
+                    content: "The message".to_owned(),
+                    children: vec![],
+                },
+                Element {
+                    tag: Paragraph,
+                    content: "this is a story that must be told".to_owned(),
+                    children: vec![],
+                },
+                Element {
+                    tag: Heading(2),
+                    content: "Another title".to_owned(),
+                    children: vec![],
+                },
+            ],
+        };
         assert_eq!(parse(input), expected);
     }
 
@@ -503,12 +517,58 @@ this is a story that must be told
     fn false_heading() {
         assert_eq!(
             parse("=Not a heading"),
-            vec![Element {
-                tag: Paragraph,
-                content: "=Not a heading".to_owned(),
-                children: vec![],
-            }]
+            Tree {
+                0: vec![Element {
+                    tag: Paragraph,
+                    content: "=Not a heading".to_owned(),
+                    children: vec![],
+                }]
+            }
         );
+    }
+
+    #[test]
+    fn nested_section() {
+        let input = r#"= The message
+this is a story that must be told
+== Another title
+with nested content
+=== And deeper nesting
+"#;
+
+        assert_eq!(
+            parse(input),
+            Tree {
+                0: vec![
+                    Element {
+                        tag: Heading(1),
+                        content: "The message".to_owned(),
+                        children: vec![]
+                    },
+                    Element {
+                        tag: Paragraph,
+                        content: "this is a story that must be told".to_owned(),
+                        children: vec![]
+                    },
+                    Element {
+                        tag: Heading(2),
+                        content: "Another title".to_owned(),
+                        children: vec![
+                            Element {
+                                tag: Paragraph,
+                                content: "with nested content".to_owned(),
+                                children: vec![],
+                            },
+                            Element {
+                                tag: Heading(3),
+                                content: "And deeper nesting".to_owned(),
+                                children: vec![]
+                            },
+                        ]
+                    },
+                ]
+            }
+        )
     }
 }
 
