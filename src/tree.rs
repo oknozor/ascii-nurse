@@ -1,5 +1,5 @@
 use core::slice::Iter;
-use crate::tree::Tag::Heading;
+use crate::tree::Tag::*;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Element {
@@ -9,7 +9,7 @@ pub struct Element {
 }
 
 impl Element {
-    pub fn push(&mut self, child: Tree) {
+    pub fn set_child(&mut self, child: Tree) {
         self.children = child.0;
     }
 }
@@ -26,6 +26,9 @@ impl Tree {
     pub fn iter(&self) -> Iter<Element> {
         self.0.iter()
     }
+    pub fn extend(&mut self, rhs: Tree) {
+        self.0.extend(rhs.0)
+    }
 
     pub fn new() -> Self {
         Tree(vec![])
@@ -36,6 +39,7 @@ impl Tree {
 pub enum Tag {
     Paragraph,
     Heading(usize),
+    EOF,
 }
 
 impl Tag { 
@@ -44,6 +48,32 @@ impl Tag {
             level.clone()
         } else {
             panic!("called get_depth on a non Heading Tag")
+        }
+    }
+
+    pub fn next(input: &str) -> Self {
+        if let Some(next) = input.chars().nth(0) {
+            let head_level = Tag::is_heading(input, 0); 
+            match next {
+                '=' if head_level > 0 => Heading(head_level),
+                _ => Paragraph,
+            }
+        } else {
+            return EOF;
+        }
+    }
+    fn is_heading(input: &str, level: usize) -> usize {
+        if let Some(next) = input.chars().next() {
+            match next {
+                '=' => {
+                    let level = level+1;
+                    Tag::is_heading(&input[1..input.len()],level)
+                }
+                ' ' => level,
+                _ => 0,
+            }
+        } else {
+            0
         }
     }
 }

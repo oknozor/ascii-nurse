@@ -13,6 +13,7 @@ impl ToHtml for Element {
                 "<h{} id=\"level-{}-section-title\" class=\"float\">{}</h{}>",
                 level, level, self.content, level
             ),
+            EOF => "".to_owned()
         }
     }
 }
