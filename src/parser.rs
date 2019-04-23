@@ -6,8 +6,22 @@ use crate::tree::Tree;
 
 
 pub fn parse(input: &str) -> ParseResult<Tree> {
-    parse_elements(input, 1)
+    let mut tree = Tree::new();
+    let mut next_input = input; 
+    if let Heading(1) = Tag::next(input) {
+        let h1 = head().parse(input).unwrap();
+        tree.push(h1.1);
+        if let Paragraph = Tag::next(h1.0) {
+            let preamble = paragraph_element().parse(h1.0).unwrap();
+            next_input = preamble.0;            
+            tree.push(preamble.1);
+        }
+    }
+    let content = parse_elements(next_input, 1).unwrap();
+    tree.extend(content.1);
+    Ok((content.0, tree))
 }
++
 fn parse_elements(input: &str, depth: usize) -> ParseResult<Tree> {
     let mut output = Tree::new();
     let mut next_tag = Tag::next(input);
@@ -27,9 +41,7 @@ fn parse_elements(input: &str, depth: usize) -> ParseResult<Tree> {
             }
             Paragraph => {
                 while let Paragraph = next_tag {
-                    let paragraph = paragraph_element()
-                        .parse(next_input)
-                        .unwrap();
+                    let paragraph = paragraph_element().parse(next_input).unwrap();
                     next_input = paragraph.0;
                     output.push(paragraph.1);
                     next_tag = Tag::next(next_input);
@@ -514,50 +526,50 @@ finally!
         assert_eq!(
             parse(input).unwrap().1,
             Tree {
-                0: vec![Element {
-                    tag: Heading(1),
-                    content: "The message".to_owned(),
-                    children: vec![
-                        // Note that any paragraph following H1 considered a "preamble" and not nested into H1 element
-                        Element {
-                            tag: Paragraph,
-                            content: "this is a story that must be told".to_owned(),
-                            children: vec![]
-                        },
-                        Element {
-                            tag: Heading(2),
-                            content: "Another title".to_owned(),
-                            children: vec![
-                                Element {
-                                    tag: Paragraph,
-
-                                    content: "with nested content".to_owned(),
-                                    children: vec![],
-                                },
-                                Element {
-                                    tag: Heading(3),
-                                    content: "And deeper nesting".to_owned(),
-                                    children: vec![Element {
-                                        tag: Paragraph,
-                                        content: "with some content".to_owned(),
-                                        children: vec![]
-                                    }]
-                                },
-                            ]
-                        },
-                        Element {
-                            tag: Heading(2),
-                            content: "Up a level".to_owned(),
-                            children: vec![Element {
+                0: vec![
+                    Element {
+                        tag: Heading(1),
+                        content: "The message".to_owned(),
+                        children: vec![]
+                    },
+                    // Note that any paragraph following H1 considered a "preamble" and not nested into H1 element
+                    Element {
+                        tag: Paragraph,
+                        content: "this is a story that must be told".to_owned(),
+                        children: vec![]
+                    },
+                    Element {
+                        tag: Heading(2),
+                        content: "Another title".to_owned(),
+                        children: vec![
+                            Element {
                                 tag: Paragraph,
-                                content: "finally!".to_owned(),
-                                children: vec![]
-                            }]
-                        },
-                    ]
-                },]
+
+                                content: "with nested content".to_owned(),
+                                children: vec![],
+                            },
+                            Element {
+                                tag: Heading(3),
+                                content: "And deeper nesting".to_owned(),
+                                children: vec![Element {
+                                    tag: Paragraph,
+                                    content: "with some content".to_owned(),
+                                    children: vec![]
+                                }]
+                            },
+                        ]
+                    },
+                    Element {
+                        tag: Heading(2),
+                        content: "Up a level".to_owned(),
+                        children: vec![Element {
+                            tag: Paragraph,
+                            content: "finally!".to_owned(),
+                            children: vec![]
+                        }]
+                    },
+                ]
             }
         )
     }
 }
-
