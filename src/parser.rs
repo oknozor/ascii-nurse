@@ -21,7 +21,6 @@ pub fn parse(input: &str) -> ParseResult<Tree> {
     tree.extend(content.1);
     Ok((content.0, tree))
 }
-+
 fn parse_elements(input: &str, depth: usize) -> ParseResult<Tree> {
     let mut output = Tree::new();
     let mut next_tag = Tag::next(input);
@@ -172,6 +171,7 @@ where
 /// filter right output of a parser pair
 fn right<'a, P1, P2, R1, R2>(parser1: P1, parser2: P2) -> impl Parser<'a, R2>
 where
+
     P1: Parser<'a, R1>,
     P2: Parser<'a, R2>,
 {

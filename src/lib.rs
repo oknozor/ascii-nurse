@@ -1,6 +1,6 @@
 pub mod parser;
 mod tree; 
-mod html;
+pub mod html;
 
 
 #[cfg(test)]
