@@ -12,13 +12,14 @@ impl ToHtml for Element {
             Paragraph => paragraph(self),
             Heading(1) => format!("<h1>{}</h1>", self.content),
             Heading(level) => head(level, self),
+            UnordereList(level) => list(level, self), 
             EOF => "".to_owned(),
         }
     }
 }
 impl ToHtml for Tree {
     fn to_html(&self) -> String {
-        self.iter().map(|el| el.to_html()).collect::<String>()
+        self.iter().map(ToHtml::to_html).collect::<String>()
     }
 }
 
@@ -30,7 +31,7 @@ fn element_child(element: &Element) -> String {
     element
         .children
         .iter()
-        .map(|el| el.to_html())
+        .map(ToHtml::to_html)
         .collect::<String>()
 }
 
@@ -60,6 +61,12 @@ fn h(level: usize, element: &Element) -> String {
         level
     )
 }
+
+fn list(level: usize, element: &Element) -> String {
+    // TODO 
+    "todo".to_owned()
+}
+
 fn paragraph(element: &Element) -> String {
     format!("<div class=\"paragraph\"><p>{}</p></div>", &element.content)
 }

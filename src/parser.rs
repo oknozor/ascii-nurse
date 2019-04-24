@@ -7,13 +7,13 @@ use crate::tree::Tree;
 
 pub fn parse(input: &str) -> ParseResult<Tree> {
     let mut tree = Tree::new();
-    let mut next_input = input; 
+    let mut next_input = input;
     if let Heading(1) = Tag::next(input) {
         let h1 = head().parse(input).unwrap();
         tree.push(h1.1);
         if let Paragraph = Tag::next(h1.0) {
             let preamble = paragraph_element().parse(h1.0).unwrap();
-            next_input = preamble.0;            
+            next_input = preamble.0;
             tree.push(preamble.1);
         }
     }
@@ -38,6 +38,7 @@ fn parse_elements(input: &str, depth: usize) -> ParseResult<Tree> {
                 output.push(element.1);
                 depth = level;
             }
+            UnordereList(level) => unimplemented!(),
             Paragraph => {
                 while let Paragraph = next_tag {
                     let paragraph = paragraph_element().parse(next_input).unwrap();
@@ -292,6 +293,21 @@ fn heading_start<'a>() -> impl Parser<'a, Tag> {
     )
 }
 
+fn nested_list_start<'a>() -> impl Parser<'a, Tag> {
+    left(
+    one_or_more(any_char.pred(|c| *c == '*')).map(|head| Tag::UnordereList(head.len())),
+            one_or_more(whitespace_char())
+    )
+}
+
+fn flat_list_start<'a>() -> impl Parser<'a, Tag> {
+    pair(any_char.pred(|c| *c == '-'), whitespace_char()).map(|_| Tag::UnordereList(1))
+}
+
+fn list_start<'a>() -> impl Parser<'a, Tag> {
+        either(flat_list_start(), nested_list_start())
+}
+
 fn new_line<'a>() -> impl Parser<'a, ()> {
     either(match_literal("\n"), match_literal("\r\n"))
 }
@@ -301,6 +317,21 @@ fn head<'a>() -> impl Parser<'a, Element> {
     left(
         pair(
             heading_start(),
+            zero_or_more(any_char.pred(|c| *c != '\n')).map(|chars| chars.into_iter().collect()),
+        ),
+        zero_or_more(new_line()),
+    )
+    .map(|(tag, content)| Element {
+        tag,
+        content,
+        children: vec![],
+    })
+}
+
+fn list<'a>() -> impl Parser<'a, Element> {
+    left(
+        pair(
+            either(list_start(), flat_list_start()),
             zero_or_more(any_char.pred(|c| *c != '\n')).map(|chars| chars.into_iter().collect()),
         ),
         zero_or_more(new_line()),
@@ -445,6 +476,35 @@ mod tests {
                 Element {
                     tag: Heading(3),
                     content: "Hello Michel".to_owned(),
+                    children: vec![],
+                }
+            ))
+        );
+    }
+
+    #[test]
+    fn should_parse_list_start() {
+        assert_eq!(list_start().parse("- one"), Ok(("one", UnordereList(1))));
+        assert_eq!(list_start().parse("** two"), Ok(("two", UnordereList(2))));
+        assert_eq!(
+            list_start().parse("*** tree"),
+            Ok(("tree", UnordereList(3)))
+        );
+        assert_eq!(list_start().parse("--- not a list"), Err("--- not a list"));
+    }
+
+    #[test]
+    fn parse_flat_list() {
+        let input = r#"- one
+- two
+- tree"#;
+        assert_eq!(
+            list().parse(input),
+            Ok((
+                "- two\n- tree",
+                Element {
+                    tag: UnordereList(1),
+                    content: "one".to_owned(),
                     children: vec![],
                 }
             ))

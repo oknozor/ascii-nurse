@@ -38,14 +38,15 @@ impl Tree {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Tag {
     Paragraph,
+    UnordereList(usize),
     Heading(usize),
     EOF,
 }
 
 impl Tag { 
     pub fn get_depth(&self) -> usize {
-        if let Heading(level) = self {
-            level.clone()
+        if let Heading(level) | UnordereList(level) = self {
+            *level
         } else {
             panic!("called get_depth on a non Heading Tag")
         }
@@ -68,6 +69,21 @@ impl Tag {
                 '=' => {
                     let level = level+1;
                     Tag::is_heading(&input[1..input.len()],level)
+                }
+                ' ' => level,
+                _ => 0,
+            }
+        } else {
+            0
+        }
+    }
+
+        fn is_unordered_list(input: &str, level: usize) -> usize {
+        if let Some(next) = input.chars().next() {
+            match next {
+                '-' | '*' => {
+                    let level = level+1;
+                    Tag::is_unordered_list(&input[1..input.len()],level)
                 }
                 ' ' => level,
                 _ => 0,
