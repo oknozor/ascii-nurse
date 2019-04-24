@@ -295,8 +295,8 @@ fn heading_start<'a>() -> impl Parser<'a, Tag> {
 
 fn nested_list_start<'a>() -> impl Parser<'a, Tag> {
     left(
-    one_or_more(any_char.pred(|c| *c == '*')).map(|head| Tag::UnordereList(head.len())),
-            one_or_more(whitespace_char())
+        one_or_more(any_char.pred(|c| *c == '*')).map(|head| Tag::UnordereList(head.len())),
+        one_or_more(whitespace_char()),
     )
 }
 
@@ -305,7 +305,7 @@ fn flat_list_start<'a>() -> impl Parser<'a, Tag> {
 }
 
 fn list_start<'a>() -> impl Parser<'a, Tag> {
-        either(flat_list_start(), nested_list_start())
+    either(flat_list_start(), nested_list_start())
 }
 
 fn new_line<'a>() -> impl Parser<'a, ()> {
@@ -374,6 +374,8 @@ where
 mod tests {
     use crate::parser::*;
     use crate::tree::*;
+    extern crate indoc;
+    use indoc::indoc;
 
     #[test]
     fn parse_literal() {
@@ -495,13 +497,17 @@ mod tests {
 
     #[test]
     fn parse_flat_list() {
-        let input = r#"- one
-- two
-- tree"#;
+        let input = indoc!(
+            "
+            - one
+            - two
+            - tree
+            "
+        );
         assert_eq!(
             list().parse(input),
             Ok((
-                "- two\n- tree",
+                "- two\n- tree\n",
                 Element {
                     tag: UnordereList(1),
                     content: "one".to_owned(),
@@ -530,10 +536,11 @@ mod tests {
 
     #[test]
     fn paragraph_and_heading() {
-        let input = r#"= The message
-this is a story that must be told
-== Another title
-"#;
+        let input = indoc!(
+            "= The message
+        this is a story that must be told
+        == Another title"
+        );
 
         let expected = Tree {
             0: vec![
@@ -573,15 +580,18 @@ this is a story that must be told
 
     #[test]
     fn nested_section() {
-        let input = r#"= The message
-this is a story that must be told
-== Another title
-with nested content
-=== And deeper nesting
-with some content
-== Up a level
-finally!
-"#;
+        let input = indoc!(
+            "
+            = The message
+            this is a story that must be told
+            == Another title
+            with nested content
+            === And deeper nesting
+            with some content
+            == Up a level
+            finally!
+            "
+        );
 
         assert_eq!(
             parse(input).unwrap().1,

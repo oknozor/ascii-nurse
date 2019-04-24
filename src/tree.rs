@@ -1,6 +1,6 @@
-use core::slice::Iter;
-use crate::tree::Tag::*;
 
+use crate::tree::Tag::*;
+use core::slice::Iter;
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Element {
     pub tag: Tag,
@@ -15,12 +15,12 @@ impl Element {
 }
 
 #[derive(Debug, PartialEq, Eq)]
-pub struct Tree(pub Vec<Element>); 
+pub struct Tree(pub Vec<Element>);
 
 impl Tree {
     // We always push to the last elment childrens
     pub fn push(&mut self, el: Element) {
-            self.0.push(el);
+        self.0.push(el);
     }
 
     pub fn iter(&self) -> Iter<Element> {
@@ -43,7 +43,7 @@ pub enum Tag {
     EOF,
 }
 
-impl Tag { 
+impl Tag {
     pub fn get_depth(&self) -> usize {
         if let Heading(level) | UnordereList(level) = self {
             *level
@@ -54,7 +54,7 @@ impl Tag {
 
     pub fn next(input: &str) -> Self {
         if let Some(next) = input.chars().nth(0) {
-            let head_level = Tag::is_heading(input, 0); 
+            let head_level = Tag::is_heading(input, 0);
             match next {
                 '=' if head_level > 0 => Heading(head_level),
                 _ => Paragraph,
@@ -67,8 +67,8 @@ impl Tag {
         if let Some(next) = input.chars().next() {
             match next {
                 '=' => {
-                    let level = level+1;
-                    Tag::is_heading(&input[1..input.len()],level)
+                    let level = level + 1;
+                    Tag::is_heading(&input[1..input.len()], level)
                 }
                 ' ' => level,
                 _ => 0,
@@ -78,12 +78,12 @@ impl Tag {
         }
     }
 
-        fn is_unordered_list(input: &str, level: usize) -> usize {
+    fn is_unordered_list(input: &str, level: usize) -> usize {
         if let Some(next) = input.chars().next() {
             match next {
                 '-' | '*' => {
-                    let level = level+1;
-                    Tag::is_unordered_list(&input[1..input.len()],level)
+                    let level = level + 1;
+                    Tag::is_unordered_list(&input[1..input.len()], level)
                 }
                 ' ' => level,
                 _ => 0,
