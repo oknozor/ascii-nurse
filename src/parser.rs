@@ -4,6 +4,7 @@ use crate::tree::Tag;
 use crate::tree::Tag::*;
 use crate::tree::Tree;
 
+type ParseResult<'a, Output> = Result<(&'a str, Output), &'a str>;
 
 pub fn parse(input: &str) -> ParseResult<Tree> {
     let mut tree = Tree::new();
@@ -24,6 +25,7 @@ pub fn parse(input: &str) -> ParseResult<Tree> {
 fn parse_elements(input: &str, depth: usize) -> ParseResult<Tree> {
     let mut output = Tree::new();
     let mut next_tag = Tag::next(input);
+
     let mut depth = depth;
     let mut next_input = input;
 
@@ -38,7 +40,16 @@ fn parse_elements(input: &str, depth: usize) -> ParseResult<Tree> {
                 output.push(element.1);
                 depth = level;
             }
-            UnordereList(level) => unimplemented!(),
+            UnordereList(level) => {
+                let ul = list().parse(next_input).unwrap();
+                let mut element: Element = ul.1;
+                next_input = ul.0;
+                while let UnordereList(next_level) = Tag::next(ul.0) {
+                    let child = list().parse(next_input).unwrap();
+                    next_input = child.0;
+                    element.children.push(child.1)
+                }
+            }
             Paragraph => {
                 while let Paragraph = next_tag {
                     let paragraph = paragraph_element().parse(next_input).unwrap();
@@ -54,9 +65,6 @@ fn parse_elements(input: &str, depth: usize) -> ParseResult<Tree> {
 
     Ok((next_input, output))
 }
-
-type ParseResult<'a, Output> = Result<(&'a str, Output), &'a str>;
-
 
 trait Parser<'a, Output> {
     fn parse(&self, input: &'a str) -> ParseResult<'a, Output>;
@@ -146,8 +154,6 @@ where
     }
 }
 
-/// takes a parser and a map function, return a parser which use the map function
-/// on its output
 fn map<'a, P, F, A, B>(parser: P, map_fn: F) -> impl Parser<'a, B>
 where
     P: Parser<'a, A>,
@@ -160,23 +166,19 @@ where
     }
 }
 
-/// filter left output of a parser pair
-fn left<'a, P1, P2, R1, R2>(parser1: P1, parser2: P2) -> impl Parser<'a, R1>
+fn pred<'a, P, A, F>(parser: P, predicate: F) -> impl Parser<'a, A>
 where
-    P1: Parser<'a, R1>,
-    P2: Parser<'a, R2>,
+    P: Parser<'a, A>,
+    F: Fn(&A) -> bool,
 {
-    map(pair(parser1, parser2), |(left, _right)| left)
-}
-
-/// filter right output of a parser pair
-fn right<'a, P1, P2, R1, R2>(parser1: P1, parser2: P2) -> impl Parser<'a, R2>
-where
-
-    P1: Parser<'a, R1>,
-    P2: Parser<'a, R2>,
-{
-    map(pair(parser1, parser2), |(_left, right)| right)
+    move |input| {
+        if let Ok((next_input, value)) = parser.parse(input) {
+            if predicate(&value) {
+                return Ok((next_input, value));
+            }
+        }
+        Err(input)
+    }
 }
 
 fn and_then<'a, P, F, A, B, NextP>(parser: P, f: F) -> impl Parser<'a, B>
@@ -189,6 +191,25 @@ where
         Ok((next_input, result)) => f(result).parse(next_input),
         Err(err) => Err(err),
     }
+}
+
+// filter left output of a parser pair
+fn left<'a, P1, P2, R1, R2>(parser1: P1, parser2: P2) -> impl Parser<'a, R1>
+where
+    P1: Parser<'a, R1>,
+    P2: Parser<'a, R2>,
+{
+    map(pair(parser1, parser2), |(left, _right)| left)
+}
+
+// filter right output of a parser pair
+fn right<'a, P1, P2, R1, R2>(parser1: P1, parser2: P2) -> impl Parser<'a, R2>
+where
+
+    P1: Parser<'a, R1>,
+    P2: Parser<'a, R2>,
+{
+    map(pair(parser1, parser2), |(_left, right)| right)
 }
 
 fn one_or_more<'a, P, A>(parser: P) -> impl Parser<'a, Vec<A>>
@@ -234,21 +255,6 @@ fn any_char(input: &str) -> ParseResult<char> {
     match input.chars().next() {
         Some(next) => Ok((&input[next.len_utf8()..], next)),
         _ => Err(input),
-    }
-}
-
-fn pred<'a, P, A, F>(parser: P, predicate: F) -> impl Parser<'a, A>
-where
-    P: Parser<'a, A>,
-    F: Fn(&A) -> bool,
-{
-    move |input| {
-        if let Ok((next_input, value)) = parser.parse(input) {
-            if predicate(&value) {
-                return Ok((next_input, value));
-            }
-        }
-        Err(input)
     }
 }
 
@@ -305,7 +311,18 @@ fn flat_list_start<'a>() -> impl Parser<'a, Tag> {
 }
 
 fn list_start<'a>() -> impl Parser<'a, Tag> {
-    either(flat_list_start(), nested_list_start())
+    right(new_line(), either(flat_list_start(), nested_list_start()))
+}
+
+fn list<'a>() -> impl Parser<'a, Element> {
+        pair(
+            either(list_start(), flat_list_start()),
+            zero_or_more(any_char.pred(|c| *c != '\n')).map(|chars| chars.into_iter().collect()),
+        ).map(|(tag, content)| Element {
+        tag,
+        content,
+        children: vec![],
+    })
 }
 
 fn new_line<'a>() -> impl Parser<'a, ()> {
@@ -313,6 +330,7 @@ fn new_line<'a>() -> impl Parser<'a, ()> {
 }
 
 // TODO: factorize this to fn element(Kind) -> impl Parser<Element>
+// If it's possible :)
 fn head<'a>() -> impl Parser<'a, Element> {
     left(
         pair(
@@ -328,20 +346,6 @@ fn head<'a>() -> impl Parser<'a, Element> {
     })
 }
 
-fn list<'a>() -> impl Parser<'a, Element> {
-    left(
-        pair(
-            either(list_start(), flat_list_start()),
-            zero_or_more(any_char.pred(|c| *c != '\n')).map(|chars| chars.into_iter().collect()),
-        ),
-        zero_or_more(new_line()),
-    )
-    .map(|(tag, content)| Element {
-        tag,
-        content,
-        children: vec![],
-    })
-}
 
 fn paragraph<'a>() -> impl Parser<'a, String> {
     pair(
@@ -485,14 +489,18 @@ mod tests {
     }
 
     #[test]
-    fn should_parse_list_start() {
-        assert_eq!(list_start().parse("- one"), Ok(("one", UnordereList(1))));
-        assert_eq!(list_start().parse("** two"), Ok(("two", UnordereList(2))));
+    fn parse_list_start() {
+        assert_eq!(list_start().parse("\n- one"), Ok(("one", UnordereList(1))));
+        assert_eq!(list_start().parse("\n** two"), Ok(("two", UnordereList(2))));
         assert_eq!(
-            list_start().parse("*** tree"),
+            list_start().parse("\n*** tree"),
             Ok(("tree", UnordereList(3)))
         );
-        assert_eq!(list_start().parse("--- not a list"), Err("--- not a list"));
+        assert_eq!(
+            list_start().parse("\n--- not a list"),
+            Err("--- not a list")
+        );
+        assert_eq!(list_start().parse("* not a list"), Err("* not a list"));
     }
 
     #[test]
@@ -507,7 +515,7 @@ mod tests {
         assert_eq!(
             list().parse(input),
             Ok((
-                "- two\n- tree\n",
+                "\n- two\n- tree\n",
                 Element {
                     tag: UnordereList(1),
                     content: "one".to_owned(),
@@ -515,11 +523,6 @@ mod tests {
                 }
             ))
         );
-    }
-
-    #[test]
-    fn eof() {
-        assert_eq!(Tag::next(""), EOF);
     }
 
     #[test]
@@ -537,7 +540,8 @@ mod tests {
     #[test]
     fn paragraph_and_heading() {
         let input = indoc!(
-            "= The message
+            "
+        = The message
         this is a story that must be told
         == Another title"
         );
@@ -641,5 +645,32 @@ mod tests {
                 ]
             }
         )
+    }
+
+    #[test]
+    fn parse_nested_list() {
+        let input = indoc!(
+            "
+            * one 
+            * two 
+            * tree
+            "
+        );
+
+        assert_eq!(
+            parse(input).unwrap().1,
+            Tree {
+                0: vec![Element {
+                    tag: UnordereList(1),
+                    content: "one".to_owned(),
+                    children: vec![]
+                }]
+            }
+        );
+    }
+
+    #[test]
+    fn eof() {
+        assert_eq!(Tag::next(""), EOF);
     }
 }

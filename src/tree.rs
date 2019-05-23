@@ -48,7 +48,7 @@ impl Tag {
         if let Heading(level) | UnordereList(level) = self {
             *level
         } else {
-            panic!("called get_depth on a non Heading Tag")
+            panic!("called get_depth on a non nested Tag")
         }
     }
 
@@ -57,6 +57,8 @@ impl Tag {
             let head_level = Tag::is_heading(input, 0);
             match next {
                 '=' if head_level > 0 => Heading(head_level),
+                '-' if head_level == 0 => UnordereList(1),
+                
                 _ => Paragraph,
             }
         } else {
